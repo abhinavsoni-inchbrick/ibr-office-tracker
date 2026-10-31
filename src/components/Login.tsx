@@ -22,7 +22,8 @@ export function Login() {
       role: 'admin',
     })
     if (setupPin.trim()) setAdminPin(setupPin.trim())
-    const created = useStore.getState().team.at(-1)
+    const members = useStore.getState().team
+    const created = members[members.length - 1]
     if (created) login(created.id)
   }
 
