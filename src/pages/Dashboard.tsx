@@ -1,4 +1,5 @@
 import { AlertCircle, CheckCircle2, CircleDashed, Clock3, ListTodo } from 'lucide-react'
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ProgressBar } from '../components/ProgressBar'
 import { useStore } from '../store/useStore'
@@ -10,12 +11,19 @@ import {
   statusClass,
   statusLabel,
 } from '../lib/utils'
+import { LAYOUT_OPTIONS } from '../data/layoutFinalization'
 
 export function Dashboard() {
   const tasks = useStore((s) => s.tasks)
   const team = useStore((s) => s.team)
   const activity = useStore((s) => s.activity)
   const phases = useStore((s) => s.phases)
+  const layout = useStore((s) => s.layoutFinalization)
+  const ensureLayoutSeed = useStore((s) => s.ensureLayoutSeed)
+
+  useEffect(() => {
+    ensureLayoutSeed()
+  }, [ensureLayoutSeed])
 
   const total = tasks.length
   const completed = tasks.filter((t) => t.status === 'completed').length
@@ -39,6 +47,8 @@ export function Dashboard() {
     { label: 'Overdue', value: overdue, icon: AlertCircle, tone: 'text-danger' },
   ]
 
+  const layoutName = LAYOUT_OPTIONS.find((o) => o.id === layout?.selectedOption)?.name
+
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <div>
@@ -47,6 +57,38 @@ export function Dashboard() {
           Office fit-out progress across {phases.length} phases
         </p>
       </div>
+
+      {!layout?.finalized ? (
+        <div className="card flex flex-wrap items-center justify-between gap-3 border-warn/30 bg-warn-soft/40 px-5 py-4">
+          <div>
+            <p className="font-display font-semibold text-ink-900">
+              Layout plan not finalized yet
+            </p>
+            <p className="text-sm text-ink-600">
+              Enter and verify your CAD layout (Client-first / Sales-first / Hybrid)
+              before moving into later phases.
+            </p>
+          </div>
+          <Link to="/phases" className="btn-primary shrink-0">
+            Verify & finalize layout
+          </Link>
+        </div>
+      ) : (
+        <div className="card flex flex-wrap items-center justify-between gap-3 border-accent/20 bg-accent-soft/40 px-5 py-4">
+          <div>
+            <p className="font-display font-semibold text-ink-900">
+              Layout locked: {layoutName}
+            </p>
+            <p className="text-sm text-ink-600">
+              Phase 1 complete for layout selection. Open Project Phases to review
+              notes or reopen (admin).
+            </p>
+          </div>
+          <Link to="/phases" className="btn-secondary shrink-0">
+            View layout record
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {stats.map(({ label, value, icon: Icon, tone }) => (

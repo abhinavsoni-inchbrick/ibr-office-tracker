@@ -1,5 +1,6 @@
 import { Paperclip, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Modal } from '../components/Modal'
 import { TaskForm } from '../components/TaskForm'
 import {
@@ -28,9 +29,13 @@ export function Tasks() {
   const removeTaskAttachment = useStore((s) => s.removeTaskAttachment)
   const updateTask = useStore((s) => s.updateTask)
 
+  const location = useLocation()
+  const initialPhase =
+    (location.state as { phaseId?: string } | null)?.phaseId ?? 'all'
+
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all')
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all')
-  const [phaseFilter, setPhaseFilter] = useState('all')
+  const [phaseFilter, setPhaseFilter] = useState(initialPhase)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
   const [detail, setDetail] = useState<Task | null>(null)

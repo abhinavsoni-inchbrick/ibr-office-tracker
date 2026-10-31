@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import {
+  createEmptyLayoutFinalization,
+  createLayoutPhaseTasks,
+} from '../data/layoutFinalization'
 import { createSeedPhases } from '../data/phases'
 import { uid } from '../lib/utils'
 import type {
@@ -10,12 +14,14 @@ import type {
   Comment,
   DesignFile,
   Expense,
+  LayoutFinalization,
+  LayoutOptionId,
   Task,
   TeamMember,
   TrackerData,
 } from '../types'
 
-const DATA_VERSION = 1
+const DATA_VERSION = 2
 
 type PartialTask = Omit<
   Task,
@@ -56,6 +62,13 @@ interface Actions {
   importData: (data: TrackerData) => void
   clearAllData: () => void
 
+  ensureLayoutSeed: () => void
+  setLayoutOption: (option: LayoutOptionId | null) => void
+  setLayoutNotes: (notes: string) => void
+  toggleLayoutChecklist: (id: string) => void
+  finalizeLayout: () => boolean
+  reopenLayout: () => void
+
   currentUser: () => TeamMember | null
   isAdmin: () => boolean
 }
@@ -63,12 +76,23 @@ interface Actions {
 function emptyData(): TrackerData {
   return {
     phases: createSeedPhases(),
-    tasks: [],
+    tasks: createLayoutPhaseTasks().map((t) => {
+      const now = new Date().toISOString()
+      return {
+        ...t,
+        id: uid('task'),
+        comments: [],
+        attachments: [],
+        createdAt: now,
+        updatedAt: now,
+      }
+    }),
     team: [],
     files: [],
     boqItems: [],
     expenses: [],
     activity: [],
+    layoutFinalization: createEmptyLayoutFinalization(),
     adminPin: '',
     version: DATA_VERSION,
   }
@@ -94,10 +118,112 @@ export const useStore = create<AppState & Actions>()(
 
       login: (userId) => {
         set({ currentUserId: userId })
+        get().ensureLayoutSeed()
         const user = get().team.find((m) => m.id === userId)
         if (user) {
           get().log(`${user.name} signed in`)
         }
+      },
+
+      ensureLayoutSeed: () => {
+        const s = get()
+        const hasPhase1 = s.tasks.some((t) => t.phaseId === 'phase-1')
+        const layout = s.layoutFinalization ?? createEmptyLayoutFinalization()
+        if (hasPhase1 && s.layoutFinalization) return
+        const now = new Date().toISOString()
+        const seeded = hasPhase1
+          ? []
+          : createLayoutPhaseTasks().map((t) => ({
+              ...t,
+              id: uid('task'),
+              comments: [],
+              attachments: [],
+              createdAt: now,
+              updatedAt: now,
+            }))
+        set({
+          layoutFinalization: layout,
+          tasks: seeded.length ? [...seeded, ...s.tasks] : s.tasks,
+          version: DATA_VERSION,
+        })
+      },
+
+      setLayoutOption: (option) => {
+        set((s) => ({
+          layoutFinalization: {
+            ...(s.layoutFinalization ?? createEmptyLayoutFinalization()),
+            selectedOption: option,
+            finalized: false,
+            finalizedAt: null,
+            finalizedByName: null,
+          },
+        }))
+        if (option) get().log(`Selected layout option: ${option}`)
+      },
+
+      setLayoutNotes: (notes) => {
+        set((s) => ({
+          layoutFinalization: {
+            ...(s.layoutFinalization ?? createEmptyLayoutFinalization()),
+            notes,
+          },
+        }))
+      },
+
+      toggleLayoutChecklist: (id) => {
+        set((s) => {
+          const base = s.layoutFinalization ?? createEmptyLayoutFinalization()
+          return {
+            layoutFinalization: {
+              ...base,
+              checklist: base.checklist.map((c) =>
+                c.id === id ? { ...c, done: !c.done } : c,
+              ),
+              finalized: false,
+              finalizedAt: null,
+              finalizedByName: null,
+            },
+          }
+        })
+      },
+
+      finalizeLayout: () => {
+        const layout = get().layoutFinalization ?? createEmptyLayoutFinalization()
+        if (!layout.selectedOption) return false
+        if (!layout.checklist.every((c) => c.done)) return false
+        const user = get().currentUser()
+        set({
+          layoutFinalization: {
+            ...layout,
+            finalized: true,
+            finalizedAt: new Date().toISOString(),
+            finalizedByName: user?.name ?? 'Unknown',
+          },
+        })
+        // Mark phase-1 finalize task complete when present
+        get().tasks
+          .filter(
+            (t) =>
+              t.phaseId === 'phase-1' &&
+              t.title.toLowerCase().includes('finalize layout'),
+          )
+          .forEach((t) => get().updateTask(t.id, { status: 'completed' }))
+        get().log(
+          `Layout plan finalized: ${layout.selectedOption.replace('_', '-')}`,
+        )
+        return true
+      },
+
+      reopenLayout: () => {
+        set((s) => ({
+          layoutFinalization: {
+            ...(s.layoutFinalization ?? createEmptyLayoutFinalization()),
+            finalized: false,
+            finalizedAt: null,
+            finalizedByName: null,
+          },
+        }))
+        get().log('Layout plan reopened for edits')
       },
 
       logout: () => {
@@ -308,6 +434,8 @@ export const useStore = create<AppState & Actions>()(
           boqItems: s.boqItems,
           expenses: s.expenses,
           activity: s.activity,
+          layoutFinalization:
+            s.layoutFinalization ?? createEmptyLayoutFinalization(),
           adminPin: s.adminPin,
           version: DATA_VERSION,
         }
@@ -316,6 +444,9 @@ export const useStore = create<AppState & Actions>()(
       importData: (data) => {
         const phases =
           data.phases?.length >= 12 ? data.phases : createSeedPhases()
+        const imported = data as TrackerData & {
+          layoutFinalization?: LayoutFinalization
+        }
         set({
           phases,
           tasks: data.tasks ?? [],
@@ -324,6 +455,8 @@ export const useStore = create<AppState & Actions>()(
           boqItems: data.boqItems ?? [],
           expenses: data.expenses ?? [],
           activity: data.activity ?? [],
+          layoutFinalization:
+            imported.layoutFinalization ?? createEmptyLayoutFinalization(),
           adminPin: data.adminPin ?? '',
           version: DATA_VERSION,
           currentUserId: null,
@@ -345,10 +478,22 @@ export const useStore = create<AppState & Actions>()(
         boqItems: s.boqItems,
         expenses: s.expenses,
         activity: s.activity,
+        layoutFinalization: s.layoutFinalization,
         adminPin: s.adminPin,
         version: s.version,
         currentUserId: s.currentUserId,
       }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>
+        return {
+          ...current,
+          ...p,
+          layoutFinalization:
+            p.layoutFinalization ?? createEmptyLayoutFinalization(),
+          phases: p.phases?.length ? p.phases : current.phases,
+          version: DATA_VERSION,
+        }
+      },
     },
   ),
 )

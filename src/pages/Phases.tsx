@@ -1,19 +1,24 @@
 import { Link } from 'react-router-dom'
+import { LayoutFinalizationPanel } from '../components/LayoutFinalizationPanel'
 import { ProgressBar } from '../components/ProgressBar'
 import { useStore } from '../store/useStore'
 
 export function Phases() {
   const phases = useStore((s) => s.phases)
   const tasks = useStore((s) => s.tasks)
+  const layout = useStore((s) => s.layoutFinalization)
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <h1 className="section-title">Project Phases</h1>
         <p className="mt-1 text-sm text-ink-400">
-          Twelve predefined stages for the office development
+          Twelve predefined stages for the office development — begin by verifying
+          your CAD layout
         </p>
       </div>
+
+      <LayoutFinalizationPanel />
 
       <div className="space-y-3">
         {phases.map((phase) => {
@@ -22,13 +27,23 @@ export function Phases() {
           const total = phaseTasks.length
           const pct = total === 0 ? 0 : Math.round((done / total) * 100)
           const inProgress = phaseTasks.filter((t) => t.status === 'in_progress').length
+          const isLayoutPhase = phase.id === 'phase-1'
 
           return (
-            <div key={phase.id} className="card p-5">
+            <div
+              key={phase.id}
+              className={`card p-5 ${isLayoutPhase && !layout?.finalized ? 'ring-1 ring-warn/40' : ''}`}
+            >
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-ink-400">
                     Phase {phase.order}
+                    {isLayoutPhase && !layout?.finalized && (
+                      <span className="ml-2 text-warn">Action needed</span>
+                    )}
+                    {isLayoutPhase && layout?.finalized && (
+                      <span className="ml-2 text-accent">Layout locked</span>
+                    )}
                   </p>
                   <h2 className="font-display text-lg font-semibold text-ink-900">
                     {phase.name}
@@ -48,7 +63,7 @@ export function Phases() {
               <div className="mt-3 flex justify-between text-xs text-ink-400">
                 <span>{pct}%</span>
                 <Link
-                  to={`/tasks`}
+                  to="/tasks"
                   className="font-medium text-accent hover:underline"
                   state={{ phaseId: phase.id }}
                 >

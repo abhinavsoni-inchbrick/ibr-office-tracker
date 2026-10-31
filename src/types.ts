@@ -2,6 +2,22 @@ export type Role = 'admin' | 'member'
 export type Priority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'in_progress' | 'completed'
 export type BoqStatus = 'planned' | 'ordered' | 'received' | 'cancelled'
+export type LayoutOptionId = 'client_first' | 'sales_first' | 'hybrid'
+
+export interface LayoutChecklistItem {
+  id: string
+  label: string
+  done: boolean
+}
+
+export interface LayoutFinalization {
+  selectedOption: LayoutOptionId | null
+  notes: string
+  checklist: LayoutChecklistItem[]
+  finalized: boolean
+  finalizedAt: string | null
+  finalizedByName: string | null
+}
 
 export interface Phase {
   id: string
@@ -92,6 +108,7 @@ export interface TrackerData {
   boqItems: BoqItem[]
   expenses: Expense[]
   activity: ActivityEntry[]
+  layoutFinalization: LayoutFinalization
   adminPin: string
   version: number
 }
