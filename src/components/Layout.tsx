@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { useStore } from '../store/useStore'
 import { MobileMenuButton, Sidebar } from './Sidebar'
 
 export function Layout() {
   const [open, setOpen] = useState(false)
+  const ensureLayoutSeed = useStore((s) => s.ensureLayoutSeed)
+
+  useEffect(() => {
+    ensureLayoutSeed()
+  }, [ensureLayoutSeed])
 
   return (
     <div className="flex min-h-screen bg-[#f4f6f8]">

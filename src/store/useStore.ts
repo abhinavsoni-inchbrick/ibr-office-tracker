@@ -127,13 +127,31 @@ export const useStore = create<AppState & Actions>()(
 
       ensureLayoutSeed: () => {
         const s = get()
-        const hasPhase1 = s.tasks.some((t) => t.phaseId === 'phase-1')
-        const layout = s.layoutFinalization ?? createEmptyLayoutFinalization()
-        if (hasPhase1 && s.layoutFinalization) return
+        const base = createEmptyLayoutFinalization()
+        const existing = s.layoutFinalization
+        const layout = existing
+          ? {
+              ...base,
+              ...existing,
+              checklist:
+                existing.checklist?.length >= base.checklist.length
+                  ? existing.checklist
+                  : base.checklist.map((item) => {
+                      const prev = existing.checklist?.find((c) => c.id === item.id)
+                      return prev ? { ...item, done: prev.done } : item
+                    }),
+            }
+          : base
+
+        const phase1Count = s.tasks.filter((t) => t.phaseId === 'phase-1').length
+        const needsTasks = phase1Count === 0
+        if (!needsTasks && existing && existing.checklist?.length >= base.checklist.length) {
+          return
+        }
+
         const now = new Date().toISOString()
-        const seeded = hasPhase1
-          ? []
-          : createLayoutPhaseTasks().map((t) => ({
+        const seeded = needsTasks
+          ? createLayoutPhaseTasks().map((t) => ({
               ...t,
               id: uid('task'),
               comments: [],
@@ -141,6 +159,8 @@ export const useStore = create<AppState & Actions>()(
               createdAt: now,
               updatedAt: now,
             }))
+          : []
+
         set({
           layoutFinalization: layout,
           tasks: seeded.length ? [...seeded, ...s.tasks] : s.tasks,
@@ -158,7 +178,19 @@ export const useStore = create<AppState & Actions>()(
             finalizedByName: null,
           },
         }))
-        if (option) get().log(`Selected layout option: ${option}`)
+        if (option) {
+          get().log(`Selected layout option: ${option}`)
+          // Mark the "select final layout" task done
+          get().tasks
+            .filter(
+              (t) =>
+                t.phaseId === 'phase-1' &&
+                t.title.toLowerCase().includes('select final layout'),
+            )
+            .forEach((t) => {
+              if (t.status !== 'completed') get().updateTask(t.id, { status: 'completed' })
+            })
+        }
       },
 
       setLayoutNotes: (notes) => {
@@ -173,18 +205,42 @@ export const useStore = create<AppState & Actions>()(
       toggleLayoutChecklist: (id) => {
         set((s) => {
           const base = s.layoutFinalization ?? createEmptyLayoutFinalization()
+          const checklist = base.checklist.map((c) =>
+            c.id === id ? { ...c, done: !c.done } : c,
+          )
           return {
             layoutFinalization: {
               ...base,
-              checklist: base.checklist.map((c) =>
-                c.id === id ? { ...c, done: !c.done } : c,
-              ),
+              checklist,
               finalized: false,
               finalizedAt: null,
               finalizedByName: null,
             },
           }
         })
+        // Sync related verification tasks when checklist advances
+        const layout = get().layoutFinalization
+        const doneIds = new Set(layout.checklist.filter((c) => c.done).map((c) => c.id))
+        const syncPairs: [string[], string][] = [
+          [['chk-headcount', 'chk-cabins'], 'verify headcount'],
+          [['chk-validate', 'chk-circulation', 'chk-roof'], 'run cad validate'],
+          [['chk-stakeholder', 'chk-option'], 'stakeholder review'],
+        ]
+        for (const [checks, titlePart] of syncPairs) {
+          if (checks.every((c) => doneIds.has(c))) {
+            get().tasks
+              .filter(
+                (t) =>
+                  t.phaseId === 'phase-1' &&
+                  t.title.toLowerCase().includes(titlePart),
+              )
+              .forEach((t) => {
+                if (t.status !== 'completed') {
+                  get().updateTask(t.id, { status: 'completed' })
+                }
+              })
+          }
+        }
       },
 
       finalizeLayout: () => {
@@ -493,6 +549,9 @@ export const useStore = create<AppState & Actions>()(
           phases: p.phases?.length ? p.phases : current.phases,
           version: DATA_VERSION,
         }
+      },
+      onRehydrateStorage: () => (state) => {
+        state?.ensureLayoutSeed()
       },
     },
   ),
